@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
         .zmath = .{
-            .url = "https://github.com/foxnne/zmath/archive/master.tar.gz",
-            .hash = "zmath-0.10.0-AAAAAE8vAwAbnyituRjC_691tXpLcUqGQDj4uj4tn3MB",
+            .url = "https://github.com/zig-gamedev/zmath/archive/master.tar.gz",
+            .hash = "zmath-0.11.0-dev-wjwivZY1AwDO7yxNmZ5HWoU03f9mFBet8LN9-oYc3i29",
         },
     },
     .paths = .{

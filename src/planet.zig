@@ -1,6 +1,7 @@
 const std = @import("std");
 const gl = @import("opengl.zig");
 const RectangleVertexArray = @import("main.zig").RectangleVertexArray;
+const zmath = @import("zmath");
 
 x: f32,
 y: f32,
@@ -58,7 +59,17 @@ pub fn deinit(self: *Self) void {
 
 pub fn update() void {}
 
-pub fn draw(self: *Self) !void {
+pub fn draw(self: *Self, projection: zmath.Mat, view: zmath.Mat) !void {
+    var transform = zmath.identity();
+    transform = zmath.mul(transform, zmath.translation(self.x, self.y, 0.0));
+    transform = zmath.mul(transform, zmath.scaling(self.radius, self.radius, 1.0));
+
     self.shader_program.use();
+
+    try self.shader_program.setUniform("color", [_]f32{ 0.95, 0.54, 0.21, 1.0 });
+
+    try self.shader_program.setUniform("projection", projection);
+    try self.shader_program.setUniform("view", view);
+    try self.shader_program.setUniform("transform", transform);
     self.circle_vertex_array.draw(.triangle_fan, 0, circle_vertex_count);
 }

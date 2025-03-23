@@ -221,24 +221,6 @@ pub const ShaderValueType = enum(c_uint) {
     uimage2DMSArray = c.GL_UNSIGNED_INT_IMAGE_2D_MULTISAMPLE_ARRAY,
     atomic_uint = c.GL_UNSIGNED_INT_ATOMIC_COUNTER,
 
-    pub fn get_size(self: ShaderValueType) usize {
-        switch (self) {
-            .vec2 => {
-                return 2;
-            },
-            .vec3 => {
-                return 3;
-            },
-            .vec4 => {
-                return 4;
-            },
-            // TODO: add more coverage for all types here
-            else => {
-                return 1;
-            },
-        }
-    }
-
     pub inline fn from(Value: type) ShaderValueType {
         const type_info = @typeInfo(Value);
         // TODO: add all remaining value types that are supported in glsl
@@ -246,47 +228,135 @@ pub const ShaderValueType = enum(c_uint) {
             .float => |float| {
                 if (float.bits == 32) {
                     return ShaderValueType.float;
-                } else {
+                } else if (float.bits == 64) {
                     return ShaderValueType.double;
-                }
-            },
-            .comptime_float => {
-                return ShaderValueType.float;
-            },
-            .@"struct" => |Struct| {
-                if (Struct.is_tuple) {
-                    std.debug.assert(Struct.fields.len > 0);
-                    const FieldType = Struct.fields[0].type;
-                    inline for (Struct.fields) |field| {
-                        std.debug.assert(field.type == FieldType);
-                    }
-                    switch (FieldType) {
-                        f32, comptime_float => {
-                            switch (Struct.fields.len) {
-                                1 => {
-                                    return ShaderValueType.float;
-                                },
-                                2 => {
-                                    return ShaderValueType.vec2;
-                                },
-                                3 => {
-                                    return ShaderValueType.vec3;
-                                },
-                                4 => {
-                                    return ShaderValueType.vec4;
-                                },
-                                else => {
-                                    @compileError("Cannot store vectors larger than 4 components, but received tuple " ++ @typeName(Value));
-                                },
-                            }
-                        },
-                        else => {
-                            @compileError("Unsupported vector component type " ++ @typeName(FieldType));
-                        },
-                    }
                 } else {
-                    @compileError("Struct for a uniform must be a tuple, found " ++ @typeName(Value));
+                    @compileError("Only 32 bits (float) and 64 bits (double) floating point numbers are supported, found " ++ @typeName(Value));
                 }
+            },
+            .int => |int_type| {
+                return switch (int_type.signedness) {
+                    .unsigned => ShaderValueType.unsigned_int,
+                    .signed => ShaderValueType.int,
+                };
+            },
+            .bool => ShaderValueType.boolean,
+            .comptime_float => ShaderValueType.float,
+            .array => |array| {
+                const child_type_info = @typeInfo(array.child);
+                const len = array.len;
+
+                switch (child_type_info) {
+                    .float => .{if (child_type_info.float.bits == 32) {
+                        switch (len) {
+                            2 => return ShaderValueType.vec2,
+                            3 => return ShaderValueType.vec3,
+                            4 => return ShaderValueType.vec4,
+                            else => @compileError("Unsupported array length for float: " ++ @tagName(len)),
+                        }
+                    } else {
+                        switch (len) {
+                            2 => return ShaderValueType.dvec2,
+                            3 => return ShaderValueType.dvec3,
+                            4 => return ShaderValueType.dvec4,
+                            else => @compileError("Unsupported array length for double: " ++ @tagName(len)),
+                        }
+                    }},
+                    .int => |int_type| {
+                        switch (int_type.signedness) {
+                            .unsigned => {
+                                switch (len) {
+                                    2 => return ShaderValueType.uvec2,
+                                    3 => return ShaderValueType.uvec3,
+                                    4 => return ShaderValueType.uvec4,
+                                    else => @compileError("Unsupported array length for unsigned int: " ++ @tagName(len)),
+                                }
+                            },
+                            .signed => {
+                                switch (len) {
+                                    2 => return ShaderValueType.ivec2,
+                                    3 => return ShaderValueType.ivec3,
+                                    4 => return ShaderValueType.ivec4,
+                                    else => @compileError("Unsupported array length for signed int: " ++ @tagName(len)),
+                                }
+                            },
+                        }
+                    },
+                    .bool => switch (len) {
+                        2 => return ShaderValueType.bvec2,
+                        3 => return ShaderValueType.bvec3,
+                        4 => return ShaderValueType.bvec4,
+                        else => @compileError("Unsupported array length for bool: " ++ @tagName(len)),
+                    },
+                    .vector => {
+                        const vector = child_type_info.vector;
+                        if (vector.child == f32) {
+                            switch (vector.len) {
+                                2 => switch (len) {
+                                    2 => return ShaderValueType.mat2,
+                                    3 => return ShaderValueType.mat2x3,
+                                    4 => return ShaderValueType.mat2x4,
+                                    else => @compileError("Unsupported array length for mat2 column: " ++ @tagName(len)),
+                                },
+                                3 => switch (len) {
+                                    2 => return ShaderValueType.mat3x2,
+                                    3 => return ShaderValueType.mat3,
+                                    4 => return ShaderValueType.mat3x4,
+                                    else => @compileError("Unsupported array length for mat3 column: " ++ @tagName(len)),
+                                },
+                                4 => switch (len) {
+                                    2 => return ShaderValueType.mat4x2,
+                                    3 => return ShaderValueType.mat4x3,
+                                    4 => return ShaderValueType.mat4,
+                                    else => @compileError("Unsupported array length for mat4 column: " ++ @tagName(len)),
+                                },
+                                else => @compileError("Unsupported vector length: " ++ @tagName(vector.len)),
+                            }
+                        } else if (vector.child == f64) {
+                            switch (vector.len) {
+                                2 => switch (len) {
+                                    2 => return ShaderValueType.dmat2,
+                                    3 => return ShaderValueType.dmat2x3,
+                                    4 => return ShaderValueType.dmat2x4,
+                                    else => @compileError("Unsupported array length for dmat2 column: " ++ @tagName(len)),
+                                },
+                                3 => switch (len) {
+                                    2 => return ShaderValueType.dmat3x2,
+                                    3 => return ShaderValueType.dmat3,
+                                    4 => return ShaderValueType.dmat3x4,
+                                    else => @compileError("Unsupported array length for dmat3 column: " ++ @tagName(len)),
+                                },
+                                4 => switch (len) {
+                                    2 => return ShaderValueType.dmat4x2,
+                                    3 => return ShaderValueType.dmat4x3,
+                                    4 => return ShaderValueType.dmat4,
+                                    else => @compileError("Unsupported array length for dmat4 column: " ++ @tagName(len)),
+                                },
+                                else => @compileError("Unsupported vector length: " ++ @tagName(vector.len)),
+                            }
+                        } else {
+                            @compileError("Unsupported matrix component type: " ++ @typeName(vector.child));
+                        }
+                    },
+                    else => @compileError("Unsupported array type: " ++ @typeName(array.child)),
+                }
+            },
+            .vector => |vector| {
+                return switch (vector.child) {
+                    f32 => switch (vector.len) {
+                        2 => ShaderValueType.vec2,
+                        3 => ShaderValueType.vec3,
+                        4 => ShaderValueType.vec4,
+                        else => @compileError("Unsupported vector length: " ++ @tagName(vector.len)),
+                    },
+                    f64 => switch (vector.len) {
+                        2 => ShaderValueType.dvec2,
+                        3 => ShaderValueType.dvec3,
+                        4 => ShaderValueType.dvec4,
+                        else => @compileError("Unsupported vector length: " ++ @tagName(vector.len)),
+                    },
+                    else => @compileError("Unsupported vector component type: " ++ @typeName(vector.child)),
+                };
             },
             else => {
                 @compileError("The type " ++ @typeName(Value) ++ " is unsupported in shaders");
@@ -412,29 +482,191 @@ pub const ShaderProgram = struct {
 
         switch (value_shader_type) {
             .float => {
-                if (value_type_info == .@"struct") {
-                    c.glUniform1f(uniform_location, value[0]);
-                } else {
-                    c.glUniform1f(uniform_location, value);
-                }
+                c.glUniform1f(uniform_location, @floatCast(value));
             },
             .double => {
-                if (value_type_info == .@"struct") {
-                    c.glUniform1d(uniform_location, value[0]);
-                } else {
-                    c.glUniform1d(uniform_location, value);
-                }
+                c.glUniform1d(uniform_location, @floatCast(value));
             },
             .vec2 => {
-                c.glUniform2f(uniform_location, value[0], value[1]);
+                if (value_type_info == .array) {
+                    c.glUniform2f(uniform_location, @floatCast(value[0]), @floatCast(value[1]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform2f(uniform_location, @floatCast(value.x), @floatCast(value.y));
+                } else {
+                    return Error.InvalidValue;
+                }
             },
             .vec3 => {
-                c.glUniform3f(uniform_location, value[0], value[1], value[2]);
+                if (value_type_info == .array) {
+                    c.glUniform3f(uniform_location, @floatCast(value[0]), @floatCast(value[1]), @floatCast(value[2]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform3f(uniform_location, @floatCast(value.x), @floatCast(value.y), @floatCast(value.z));
+                } else {
+                    return Error.InvalidValue;
+                }
             },
             .vec4 => {
-                c.glUniform4f(uniform_location, value[0], value[1], value[2], value[3]);
+                if (value_type_info == .array) {
+                    c.glUniform4f(uniform_location, @floatCast(value[0]), @floatCast(value[1]), @floatCast(value[2]), @floatCast(value[3]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform4f(uniform_location, @floatCast(value.x), @floatCast(value.y), @floatCast(value.z), @floatCast(value.w));
+                } else {
+                    return Error.InvalidValue;
+                }
             },
-            // TODO: add the mapping for more shader value types
+            .int => {
+                c.glUniform1i(uniform_location, @intCast(value));
+            },
+            .ivec2 => {
+                if (value_type_info == .array) {
+                    c.glUniform2i(uniform_location, @intCast(value[0]), @intCast(value[1]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform2i(uniform_location, @intCast(value.x), @intCast(value.y));
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .ivec3 => {
+                if (value_type_info == .array) {
+                    c.glUniform3i(uniform_location, @intCast(value[0]), @intCast(value[1]), @intCast(value[2]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform3i(uniform_location, @intCast(value.x), @intCast(value.y), @intCast(value.z));
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .ivec4 => {
+                if (value_type_info == .array) {
+                    c.glUniform4i(uniform_location, @intCast(value[0]), @intCast(value[1]), @intCast(value[2]), @intCast(value[3]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform4i(uniform_location, @intCast(value.x), @intCast(value.y), @intCast(value.z), @intCast(value.w));
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .unsigned_int => {
+                c.glUniform1ui(uniform_location, @intCast(value));
+            },
+            .uvec2 => {
+                if (value_type_info == .array) {
+                    c.glUniform2ui(uniform_location, @intCast(value[0]), @intCast(value[1]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform2ui(uniform_location, @intCast(value.x), @intCast(value.y));
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .uvec3 => {
+                if (value_type_info == .array) {
+                    c.glUniform3ui(uniform_location, @intCast(value[0]), @intCast(value[1]), @intCast(value[2]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform3ui(uniform_location, @intCast(value.x), @intCast(value.y), @intCast(value.z));
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .uvec4 => {
+                if (value_type_info == .array) {
+                    c.glUniform4ui(uniform_location, @intCast(value[0]), @intCast(value[1]), @intCast(value[2]), @intCast(value[3]));
+                } else if (value_type_info == .vector) {
+                    c.glUniform4ui(uniform_location, @intCast(value.x), @intCast(value.y), @intCast(value.z), @intCast(value.w));
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .boolean => {
+                c.glUniform1i(uniform_location, if (value) 1 else 0);
+            },
+            .bvec2 => {
+                if (value_type_info == .array) {
+                    c.glUniform2i(uniform_location, if (value[0]) 1 else 0, if (value[1]) 1 else 0);
+                } else if (value_type_info == .vector) {
+                    c.glUniform2i(uniform_location, if (value.x) 1 else 0, if (value.y) 1 else 0);
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .bvec3 => {
+                if (value_type_info == .array) {
+                    c.glUniform3i(uniform_location, if (value[0]) 1 else 0, if (value[1]) 1 else 0, if (value[2]) 1 else 0);
+                } else if (value_type_info == .vector) {
+                    c.glUniform3i(uniform_location, if (value.x) 1 else 0, if (value.y) 1 else 0, if (value.z) 1 else 0);
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .bvec4 => {
+                if (value_type_info == .array) {
+                    c.glUniform4i(uniform_location, if (value[0]) 1 else 0, if (value[1]) 1 else 0, if (value[2]) 1 else 0, if (value[3]) 1 else 0);
+                } else if (value_type_info == .vector) {
+                    c.glUniform4i(uniform_location, if (value.x) 1 else 0, if (value.y) 1 else 0, if (value.z) 1 else 0, if (value.w) 1 else 0);
+                } else {
+                    return Error.InvalidValue;
+                }
+            },
+            .mat2, .mat3, .mat4, .mat2x3, .mat2x4, .mat3x2, .mat3x4, .mat4x2, .mat4x3, .dmat2, .dmat3, .dmat4, .dmat2x3, .dmat2x4, .dmat3x2, .dmat3x4, .dmat4x2, .dmat4x3 => {
+                const num_elements = switch (value_shader_type) {
+                    .mat2, .dmat2 => 4,
+                    .mat3, .dmat3 => 9,
+                    .mat4, .dmat4 => 16,
+                    .mat2x3, .dmat2x3, .mat3x2, .dmat3x2 => 6,
+                    .mat2x4, .dmat2x4, .mat4x2, .dmat4x2 => 8,
+                    .mat3x4, .dmat3x4, .mat4x3, .dmat4x3 => 12,
+                    else => unreachable,
+                };
+                const MatValue = switch (value_shader_type) {
+                    .mat2, .mat3, .mat4, .mat2x3, .mat2x4, .mat3x2, .mat3x4, .mat4x2, .mat4x3 => f32,
+                    .dmat2, .dmat3, .dmat4, .dmat2x3, .dmat2x4, .dmat3x2, .dmat3x4, .dmat4x2, .dmat4x3 => f64,
+                    else => unreachable,
+                };
+
+                var flat_values: [num_elements]MatValue = undefined;
+                inline for (value, 0..) |row, i| {
+                    const Row = @TypeOf(row);
+                    const row_type_info = @typeInfo(Row);
+
+                    const array_row: [row_type_info.vector.len]MatValue = row;
+                    inline for (array_row, 0..) |v, j| {
+                        flat_values[i * array_row.len + j] = v;
+                    }
+                }
+
+                switch (value_shader_type) {
+                    .mat2 => c.glUniformMatrix2fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat3 => c.glUniformMatrix3fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat4 => c.glUniformMatrix4fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat2x3 => c.glUniformMatrix2x3fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat2x4 => c.glUniformMatrix2x4fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat3x2 => c.glUniformMatrix3x2fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat3x4 => c.glUniformMatrix3x4fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat4x2 => c.glUniformMatrix4x2fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .mat4x3 => c.glUniformMatrix4x3fv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat2 => c.glUniformMatrix2dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat3 => c.glUniformMatrix3dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat4 => c.glUniformMatrix4dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat2x3 => c.glUniformMatrix2x3dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat2x4 => c.glUniformMatrix2x4dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat3x2 => c.glUniformMatrix3x2dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat3x4 => c.glUniformMatrix3x4dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat4x2 => c.glUniformMatrix4x2dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    .dmat4x3 => c.glUniformMatrix4x3dv(uniform_location, 1, c.GL_FALSE, &flat_values),
+                    else => unreachable,
+                }
+            },
+
+            // Samplers
+            .sampler1D, .sampler2D, .sampler3D, .samplerCube, .sampler1DShadow, .sampler2DShadow, .sampler1DArray, .sampler2DArray, .sampler1DArrayShadow, .sampler2DArrayShadow, .sampler2DMS, .sampler2DMSArray, .samplerCubeShadow, .samplerBuffer, .sampler2DRect, .sampler2DRectShadow, .isampler1D, .isampler2D, .isampler3D, .isamplerCube, .isampler1DArray, .isampler2DArray, .isampler2DMS, .isampler2DMSArray, .isamplerBuffer, .isampler2DRect, .usampler1D, .usampler2D, .usampler3D, .usamplerCube, .usampler1DArray, .usampler2DArray, .usampler2DMS, .usampler2DMSArray, .usamplerBuffer, .usampler2DRect => {
+                c.glUniform1i(uniform_location, @intCast(value));
+            },
+
+            // Images
+            .image1D, .image2D, .image3D, .image2DRect, .imageCube, .imageBuffer, .image1DArray, .image2DArray, .image2DMS, .image2DMSArray, .iimage1D, .iimage2D, .iimage3D, .iimage2DRect, .iimageCube, .iimageBuffer, .iimage1DArray, .iimage2DArray, .iimage2DMS, .iimage2DMSArray, .uimage1D, .uimage2D, .uimage3D, .uimage2DRect, .uimageCube, .uimageBuffer, .uimage1DArray, .uimage2DArray, .uimage2DMS, .uimage2DMSArray => {
+                c.glUniform1i(uniform_location, @intCast(value));
+            },
+
+            .atomic_uint => {
+                c.glUniform1ui(uniform_location, @intCast(value));
+            },
             else => {
                 @compileError("Unsupported type for uniform " ++ @typeName(Value));
             },

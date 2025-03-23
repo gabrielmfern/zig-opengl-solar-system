@@ -2,6 +2,7 @@ const std = @import("std");
 const c = @import("c.zig").c;
 const gl = @import("opengl.zig");
 const Planet = @import("planet.zig");
+const zmath = @import("zmath");
 
 const ApplicationError = error{ GLFWInit, GLFWWindowCreation } || gl.Error;
 
@@ -63,13 +64,14 @@ pub fn main() !void {
     c.glfwWindowHint(c.GLFW_OPENGL_DEBUG_CONTEXT, c.GLFW_TRUE);
     const window = c.glfwCreateWindow(width, height, "lexis", null, null) orelse return ApplicationError.GLFWWindowCreation;
     c.glfwMakeContextCurrent(window);
+    c.glEnable(c.GL_DEPTH_TEST);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
     var sun = try Planet.init(
         allocator,
-        1,
+        200,
         0,
         0,
     );
@@ -83,15 +85,25 @@ pub fn main() !void {
         std.log.info("\x1B[2J\x1B[H", .{});
         std.log.info("FPS: {d:2}", .{1000 / delta});
 
+        c.glfwPollEvents();
+
+        sun.update();
+
         c.glfwGetFramebufferSize(window, &width, &height);
+
+        const fwidth: f32 = @floatFromInt(width);
+        const fheight: f32 = @floatFromInt(height);
+
         c.glViewport(0, 0, width, height);
 
-        c.glClearColor(1.0, 1.0, 1.0, 1.0);
-        c.glClear(c.GL_COLOR_BUFFER_BIT);
+        c.glClearColor(0.0, 0.0, 0.0, 1.0);
+        c.glClear(c.GL_COLOR_BUFFER_BIT | c.GL_DEPTH_BUFFER_BIT);
 
-        try sun.draw();
+        const projection = zmath.orthographicRhGl(fwidth, fheight, 0.0, 1.0);
+        const view = zmath.translation(0.0, 0.0, -0.1);
+
+        try sun.draw(projection, view);
 
         c.glfwSwapBuffers(window);
-        c.glfwPollEvents();
     }
 }
