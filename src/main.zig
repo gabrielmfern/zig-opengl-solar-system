@@ -9,7 +9,7 @@ const ApplicationError = error{ GLFWInit, GLFWWindowCreation } || gl.Error;
 
 const gravitational_contant = 0.0000000000667430;
 
-const solar_system_width: f32 = 2.024e12;
+const solar_system_width: f32 = 9.024e11;
 const solar_system_height: f32 = solar_system_width;
 const solar_system_size = @Vector(2, f32){ 8.976e9, 4.995e9 };
 
@@ -34,17 +34,47 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var sun = try Planet.init(allocator, 1.989e30, 6.957e10, @Vector(2, f32){ 0.0, 0.0 }, [_]f32{ 1.0, 1.0, 0.0, 1.0 });
+    var sun = try Planet.init(allocator, 1.989e30, 8.957e9, @Vector(2, f32){ 0.0, 0.0 }, [_]f32{ 1.0, 1.0, 0.0, 1.0 });
+    // sun.velocity = @Vector(2, f32){ 0.0, 1.34e4 };
     defer sun.deinit();
-    var mars = try Planet.init(allocator, 6.39e23, 3.3e10, @Vector(2, f32){
-        -2.066e11,
+    var mars = try Planet.init(allocator, 6.417e23, 3.389e9, @Vector(2, f32){
+        -2.279e11,
         0.0,
     }, [_]f32{ 0.95, 0.54, 0.21, 1.0 });
-    mars.velocity = @Vector(2, f32){ 2.4e4, 2.4e4 };
+    mars.velocity = @Vector(2, f32){ 0.0, 2.4e4 };
     defer mars.deinit();
-    const planets = [_]*Planet{ &sun, &mars };
 
-    const time_accelerator: f32 = 10_000_000.0;
+    var earth = try Planet.init(allocator, 5.972e24, 6.371e9, @Vector(2, f32){
+        -1.496e11,
+        0.0,
+    }, [_]f32{ 0.0, 1.0, 1.0, 1.0 });
+    earth.velocity = @Vector(2, f32){ 0.0, 2.98e4 };
+    defer earth.deinit();
+
+    var mercury = try Planet.init(allocator, 3.301e23, 2.440e9, @Vector(2, f32){
+        -5.791e10,
+        0.0,
+    }, [_]f32{ 0.71, 0.71, 0.71, 1.0 });
+    mercury.velocity = @Vector(2, f32){ 0.0, -4.74e4 };
+    defer mercury.deinit();
+
+    var venus = try Planet.init(allocator, 4.867e24, 6.051e9, @Vector(2, f32){
+        -1.082e11,
+        0.0,
+    }, [_]f32{ 165.0 / 255.0, 124.0 / 255.0, 27.0 / 255.0, 1.0 });
+    venus.velocity = @Vector(2, f32){ 0.0, 3.5e4 };
+    defer venus.deinit();
+
+    var jupiter = try Planet.init(allocator, 1.898e27, 7.051e9, @Vector(2, f32){
+        -7.783e11,
+        0.0,
+    }, [_]f32{ 235.0 / 255.0, 243.0 / 255.0, 246.0 / 255.0, 1.0 });
+    jupiter.velocity = @Vector(2, f32){ 0.0, 1.31e4 };
+    defer jupiter.deinit();
+
+    const planets = [_]*Planet{ &sun, &mars, &earth, &mercury, &venus, &jupiter };
+
+    const time_accelerator: f32 = 5_000_000.0;
     const max_fps: f32 = 165.0;
 
     var camera = Camera.init();
@@ -59,7 +89,7 @@ pub fn main() !void {
         c.glfwGetFramebufferSize(window, &width, &height);
 
         if (delta >= 1.0 / max_fps) {
-            camera.update(window, delta);
+            camera.update(window, delta, solar_system_width / 5);
             delta *= time_accelerator;
 
             for (planets) |planet| {
