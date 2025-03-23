@@ -3,12 +3,14 @@ const gl = @import("opengl.zig");
 const RectangleVertexArray = @import("main.zig").RectangleVertexArray;
 const zmath = @import("zmath");
 
-x: f32,
-y: f32,
+position: @Vector(2, f32),
 radius: f32,
+color: [4]f32,
 
-velocity: f32,
-acceleration: f32,
+velocity: @Vector(2, f32),
+acceleration: @Vector(2, f32),
+
+mass: f32,
 
 shader_program: gl.ShaderProgram,
 
@@ -22,7 +24,7 @@ const fragmentShaderSource: []const u8 = @embedFile("./planet/fragment.glsl");
 
 const circle_vertex_count = 1000;
 
-pub fn init(allocator: std.mem.Allocator, radius: f32, x: f32, y: f32) !Self {
+pub fn init(allocator: std.mem.Allocator, mass: f32, radius: f32, position: @Vector(2, f32), color: [4]f32) !Self {
     var vertex_shader = try gl.Shader.init(vertexShaderSource, .vertex, allocator);
     var fragment_shader = try gl.Shader.init(fragmentShaderSource, .fragment, allocator);
 
@@ -47,7 +49,7 @@ pub fn init(allocator: std.mem.Allocator, radius: f32, x: f32, y: f32) !Self {
     var vertex_array = gl.VertexArray.init();
     vertex_array.set_buffer(0, &array_buffer, 2);
 
-    return .{ .x = x, .y = y, .radius = radius, .velocity = 0.0, .acceleration = 0.0, .shader_program = shader_program, .circle_array_buffer = array_buffer, .circle_vertex_array = vertex_array };
+    return Self{ .position = position, .radius = radius, .velocity = @Vector(2, f32){ 0.0, 0.0 }, .acceleration = @Vector(2, f32){ 0.0, 0.0 }, .shader_program = shader_program, .circle_array_buffer = array_buffer, .circle_vertex_array = vertex_array, .mass = mass, .color = color };
 }
 
 pub fn deinit(self: *Self) void {
@@ -57,16 +59,20 @@ pub fn deinit(self: *Self) void {
     self.circle_array_buffer.deinit();
 }
 
-pub fn update() void {}
+pub fn update(self: *Self, delta: f32) void {
+    const delta_vector = @Vector(2, f32){ delta, delta };
+    self.velocity = self.velocity + self.acceleration * delta_vector;
+    self.position = self.position + self.velocity * delta_vector;
+}
 
 pub fn draw(self: *Self, projection: zmath.Mat, view: zmath.Mat) !void {
     var transform = zmath.identity();
-    transform = zmath.mul(transform, zmath.translation(self.x, self.y, 0.0));
     transform = zmath.mul(transform, zmath.scaling(self.radius, self.radius, 1.0));
+    transform = zmath.mul(transform, zmath.translation(self.position[0], self.position[1], 0.0));
 
     self.shader_program.use();
 
-    try self.shader_program.setUniform("color", [_]f32{ 0.95, 0.54, 0.21, 1.0 });
+    try self.shader_program.setUniform("color", self.color);
 
     try self.shader_program.setUniform("projection", projection);
     try self.shader_program.setUniform("view", view);
