@@ -4,6 +4,10 @@
     .fingerprint = 0x28893917a220a111,
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
+        .zmath = .{
+            .url = "https://github.com/foxnne/zmath/archive/master.tar.gz",
+            .hash = "zmath-0.10.0-AAAAAE8vAwAbnyituRjC_691tXpLcUqGQDj4uj4tn3MB",
+        },
     },
     .paths = .{
         "build.zig",
